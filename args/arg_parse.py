@@ -39,7 +39,7 @@ class ArgParse:
             "--dataset_name",
             type=str,
             default="CIFAR10",
-            choices=["CIFAR10", "ImageFolder", "VideoFolder", "ZeroImages"],
+            choices=["CIFAR10", "ImageFolder", "VideoFolder", "ZeroImages", "UCF", "HMDB"],
             help="name of dataset.",
         )
         parser.add_argument(
@@ -247,6 +247,45 @@ class ArgParse:
             action="store_true",
             help="do not use comet.ml (default: use comet)",
         )
+
+        parser.add_argument(
+            "--dataloader",
+            "-dl",
+            type=str,
+            default="webdataset",
+            choices=["pytorchvideo", "webdataset"],
+        )
+        parser.add_argument(
+            "-wutp",
+            "--wds_UCF_train_path",
+            type=str,
+            default="/mnt/SSD4TB/kamiya/UCF101/shards_ucf101_sfef_train",
+            help="",
+        )
+        parser.add_argument(
+            "-wuvp",
+            "--wds_UCF_val_path",
+            type=str,
+            default="/mnt/SSD4TB/kamiya/UCF101/shards_ucf101_sfef_val",
+            help="",
+        )
+        parser.add_argument(
+            "--shuffle", type=int, default=10, help="shuffle buffer size. default 10"
+        )
+        parser.add_argument(
+            "-vet",
+            "--video_edge_time",
+            type=float,
+            default=0.5,
+            help="video_edge_time default 9",
+        )
+        parser.add_argument(
+            "-ra", "--ratio", type=float, default=0.3, help="ratio default 0.5"
+        )
+        parser.add_argument(
+            "--model_num", type=int, default=2, help="number of models. default 8"
+        )
+
         parser.set_defaults(disable_comet=False)
 
         args = parser.parse_args()

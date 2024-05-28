@@ -45,6 +45,39 @@ class ClassificationBaseModel(nn.Module):
         )
 
 
+class FederatedLearningModel(nn.Module):
+
+    def __init__(self, model_config: ModelConfig):
+        super().__init__()
+        self.model_config = model_config
+        self.criterion = nn.CrossEntropyLoss()
+
+        self.model = self.__create_dummy_model()
+
+    def __create_dummy_model(self) -> nn.Module:
+        return nn.Module()
+
+    def forward(
+        self,
+        pixel_values: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
+    ) -> ModelOutput:
+
+        logits = self.model(pixel_values)
+
+        if labels is None:
+            return ModelOutput(
+                logits=logits
+            )
+
+        loss = self.criterion(logits, labels)
+
+        return ModelOutput(
+            logits=logits,
+            loss=loss
+        )
+
+
 def get_device(model: ClassificationBaseModel | nn.DataParallel | nn.Module) -> torch.device | Any:
     """get acutual device
     taken from https://github.com/pytorch/pytorch/issues/7460

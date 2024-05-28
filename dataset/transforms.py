@@ -4,6 +4,19 @@ from typing import Tuple
 import torch
 import torchvision.transforms.v2 as image_transform
 import pytorchvideo.transforms as video_transform
+from torchvision import transforms
+from torchvision.transforms import (
+    CenterCrop,
+    RandomCrop,
+    RandomHorizontalFlip,
+    Compose,
+)
+from pytorchvideo.transforms import (
+    Normalize,
+    RandomShortSideScale,
+    ShortSideScale,
+    UniformTemporalSubsample,
+)
 
 
 @dataclass
@@ -119,3 +132,28 @@ def transform_image(
     ])
 
     return train_transform, val_transform
+
+
+def trimmed_transform(is_train):
+    transform_list = [
+        UniformTemporalSubsample(16),
+        transforms.Lambda(lambda x: x / 255.),
+        Normalize(
+            [0.485, 0.456, 0.406],
+            [0.229, 0.224, 0.225]),
+    ]
+
+    if is_train:
+        transform_list.extend([
+            RandomShortSideScale(min_size=256, max_size=320,),
+            RandomCrop(224),
+            RandomHorizontalFlip(),
+        ])
+    else:
+        transform_list.extend([
+            ShortSideScale(256),
+            CenterCrop(224),
+        ])
+
+    transform = Compose(transform_list)
+    return transform

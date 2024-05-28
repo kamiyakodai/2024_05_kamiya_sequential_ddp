@@ -19,6 +19,8 @@ from dataset import (
     TransformVideoInfo,
 )
 
+from .use_UCF_webdataset import get_train_val_loaders
+
 
 @dataclass
 class DataloadersInfo:
@@ -109,6 +111,11 @@ def configure_dataloader(
                 num_workers=args.num_workers,
                 transform=train_transform,
             ))
+
+    # if args.dataloader == "webdataset":
+    #     if dataset_name == "UCF" or "HMDB":
+    #         train_loader, val_loader, n_classes = get_train_val_loaders(args, batch_size=args.batch_size, world_size=4, rank=0)
+    #             # get_sequential_trimmed_dataset(args),
 
     else:
         raise ValueError("invalid dataset_name")

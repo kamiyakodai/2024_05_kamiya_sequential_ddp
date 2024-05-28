@@ -9,12 +9,16 @@ from logger import configure_logger_pl
 from callback import configure_callbacks
 from dataset import TrainValDataModule
 from model import SimpleLightningModel
+from comet_ml import Experiment
+from model.x3d.x3d import X3DM
 
 
 def main():
     assert torch.cuda.is_available()
 
     args = ArgParse.get()
+    models = []
+    ratio = args.ratio
 
     loggers, exp_name = configure_logger_pl(
         model_name=args.model_name,
@@ -28,7 +32,9 @@ def main():
     model_lightning = SimpleLightningModel(
         command_line_args=args,
         n_classes=data_module.n_classes,
-        exp_name=exp_name
+        exp_name=exp_name,
+        models=models,
+        ratio=ratio,
     )
 
     callbacks = configure_callbacks()
