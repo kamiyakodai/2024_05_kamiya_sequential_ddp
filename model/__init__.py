@@ -13,6 +13,7 @@ from .dummy_models import ZeroOutputModel
 from .model_factory import configure_model
 
 from .simple_lightning_model import SimpleLightningModel
+# from .federated_learning_model import SimpleLightningModel
 
 
 __all__ = [

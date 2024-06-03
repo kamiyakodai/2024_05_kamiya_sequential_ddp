@@ -13,7 +13,7 @@ from pathlib import Path
 from functools import partial
 from dataset.transforms import trimmed_transform
 from dataset.utils import info_from_json
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
 
@@ -158,6 +158,29 @@ def my_collate_UCF(batch):
 #     return train_loader, val_loader, num_classes
 
 
+class UCF101Dataset(Dataset):
+    def __init__(self, json_data, bin_data):
+        self.data = []
+        for (json_class, json_content), (bin_class, bin_content) in zip(json_data, bin_data):
+            assert json_class == bin_class, "Class names do not match!"
+            self.data.append((json_class, json_content, bin_content))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        class_name, json_content, bin_content = self.data[idx]
+        # 必要に応じてjson_contentとbin_contentを処理する
+        # ここでは単純にテンソルに変換して返す
+        json_tensor = torch.tensor(json_content)
+        bin_tensor = torch.tensor(list(bin_content))  # bin_contentはバイナリデータのまま
+
+        return json_tensor, bin_tensor, class_name
+
+def create_dataloader(json_data, bin_data, batch_size=32, shuffle=True, num_workers=4):
+    dataset = UCF101Dataset(json_data, bin_data)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    return dataloader
 
 def open_tar(shard_filename, dir_name):
     video_list = []
@@ -178,7 +201,7 @@ def open_tar(shard_filename, dir_name):
     paired_data = list(zip(video_list, meta_list))
     paired_data.sort(key=lambda x: x[0].getvalue())
 
-    return paired_data, dir_list
+    return paired_data
 
 
 def make_video_dataset_list_use_shards(args, subset: str):
@@ -189,36 +212,52 @@ def make_video_dataset_list_use_shards(args, subset: str):
     else:
         raise ValueError('invalid subset = ' + subset)
 
-    paired_list = []
-    dir_list = []
-    with open(file_txt_list, 'r', encoding="utf-8") as file:
-        dir_path_list = file.readlines()
-        if subset == 'train':
-            random.shuffle(dir_path_list)
-        elif subset == 'val':
-            dir_path_list.sort()
-        for dir_path in dir_path_list:
-            shard_path = os.path.join(args.wds_UCF_train_path, dir_path.strip())
-            paired_data, dir_path_minilist = open_tar(shard_path, dir_path.strip())
-            paired_list.extend(paired_data)
-            dir_list.extend(dir_path_minilist)
-    return paired_list, dir_list
+    json_data = []
+    bin_data = []
+    classes = []
+
+    tar_files = sorted([f for f in os.listdir(file_txt_list) if f.endswith('.tar')])
+
+    for tar_file in tar_files:
+        tar_path = os.path.join(file_txt_list, tar_file)
+        with tarfile.open(tar_path, 'r') as tar:
+            for member in tar.getmembers():
+                file = tar.extractfile(member)
+                if file is not None:
+                    # ファイル名からクラス名を取得
+                    class_name = os.path.dirname(member.name)
+                    classes.append(class_name)
+
+                    if member.name.endswith('.stats.json'):
+                        try:
+                            json_content = json.load(file)
+                            json_data.append((class_name, json_content))
+                        except Exception as e:
+                            print(f"Error reading JSON from {member.name} in {tar_file}: {e}")
+                    elif member.name.endswith('.video.bin'):
+                        try:
+                            bin_content = file.read()
+                            bin_data.append((class_name, bin_content))
+                        except Exception as e:
+                            print(f"Error reading BIN from {member.name} in {tar_file}: {e}")
+
+    return json_data, bin_data, classes
 
 
-def get_data_loader(paired_list, dir_list, batch_size, world_size, rank, shuffle):
-    # TensorDatasetの作成
-    dataset = TensorDataset(
-        torch.stack([torch.tensor(v.read()) for v, m in paired_list]),
-        torch.stack([torch.tensor(m) for v, m in paired_list])
-    )
+# def get_data_loader(paired_list, dir_list, batch_size, world_size, rank, shuffle):
+#     # TensorDatasetの作成
+#     dataset = TensorDataset(
+#         torch.stack([torch.tensor(v.read()) for v, m in paired_list]),
+#         torch.stack([torch.tensor(m) for v, m in paired_list])
+#     )
 
-    # DistributedSamplerを使用してデータを各プロセスに分配
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=shuffle)
+#     # DistributedSamplerを使用してデータを各プロセスに分配
+#     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=shuffle)
 
-    # DataLoaderを作成
-    data_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, num_workers=4, pin_memory=True)
+#     # DataLoaderを作成
+#     data_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, num_workers=4, pin_memory=True)
 
-    return data_loader
+#     return data_loader
 
 def get_num_classes(dir_list):
     unique_classes = set(dir_list)
@@ -226,15 +265,11 @@ def get_num_classes(dir_list):
 
 def get_train_val_loaders(args, batch_size, world_size, rank):
     # トレーニング用のpaired_listとdir_listを作成
-    train_paired_list, train_dir_list = make_video_dataset_list_use_shards(args, 'train')
+    train_json_data, train_bin_data, n_classes = make_video_dataset_list_use_shards(args, 'train')
     # 検証用のpaired_listとdir_listを作成
-    val_paired_list, val_dir_list = make_video_dataset_list_use_shards(args, 'val')
+    val_json_data, val_bin_data, n_classes = make_video_dataset_list_use_shards(args, 'val')
 
-    # トレーニングデータローダーを作成
-    train_loader = get_data_loader(train_paired_list, batch_size, world_size, rank, shuffle=True)
-    # 検証データローダーを作成
-    val_loader = get_data_loader(val_paired_list, batch_size, world_size, rank, shuffle=False)
-    # クラス数を取得
-    n_classes = get_num_classes(train_dir_list + val_dir_list)
+    train_loader = create_dataloader(train_json_data, train_bin_data)
+    val_loader = create_dataloader(val_json_data, val_bin_data)
 
     return train_loader, val_loader, n_classes

@@ -285,6 +285,9 @@ class ArgParse:
         parser.add_argument(
             "--model_num", type=int, default=2, help="number of models. default 8"
         )
+        parser.add_argument(
+            "--calc", type=str, default='nomal', choices=['nomal', 'federated']
+        )
 
         parser.set_defaults(disable_comet=False)
 
